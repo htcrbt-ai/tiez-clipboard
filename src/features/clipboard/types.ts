@@ -33,6 +33,9 @@ export interface ClipboardItemProps {
 
   onSelect: () => void;
   onCopy: (withFormat?: boolean) => void;
+  selectionMode?: boolean;
+  multiSelected?: boolean;
+  onMultiSelect?: (event: MouseEvent) => void;
   onToggleReveal: (e: MouseEvent) => void;
   onOpen: (e: MouseEvent) => void;
   onTogglePin: (e: MouseEvent) => void;

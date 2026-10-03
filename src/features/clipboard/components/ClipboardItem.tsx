@@ -27,7 +27,8 @@ import {
     Files,
     ImageOff,
     FileQuestion,
-    GripVertical
+    GripVertical,
+    Check
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ClipboardItemProps } from "../types";
@@ -690,6 +691,9 @@ const ClipboardItem = ({
     isAIProcessing,
     onSelect,
     onCopy,
+    selectionMode = false,
+    multiSelected = false,
+    onMultiSelect,
     onToggleReveal,
     onOpen,
     onTogglePin,
@@ -1500,7 +1504,7 @@ const ClipboardItem = ({
             animate={{ marginBottom: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.1 }}
-            className={`history-item ${isSelected ? "selected" : ""} ${compactMode ? "compact" : ""} ${item.is_pinned ? "pinned" : ""} ${className || ''}`}
+            className={`history-item ${isSelected ? "selected" : ""} ${multiSelected ? "multi-selected" : ""} ${compactMode ? "compact" : ""} ${item.is_pinned ? "pinned" : ""} ${className || ''}`}
             onMouseDown={(e) => {
                 const target = e.target as HTMLElement;
                 if (e.button !== 0) return;
@@ -1522,6 +1526,15 @@ const ClipboardItem = ({
                     return;
                 }
                 if (target.closest('a')) {
+                    return;
+                }
+                const wantsMultiSelect = selectionMode || e.ctrlKey || e.metaKey || e.shiftKey;
+                if (wantsMultiSelect && onMultiSelect) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void hideCompactPreview();
+                    onMultiSelect(e);
+                    onSelect();
                     return;
                 }
                 // e.preventDefault() stops macOS from transferring key-window focus to TieZ
@@ -1614,6 +1627,25 @@ const ClipboardItem = ({
         >
             <div className="item-meta">
                 <div className="item-meta-left">
+                    {selectionMode && (
+                        <button
+                            type="button"
+                            className={`group-check ${multiSelected ? "checked" : ""}`}
+                            aria-pressed={multiSelected}
+                            title={t("group_select_mode")}
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onMultiSelect?.(e);
+                            }}
+                        >
+                            {multiSelected ? <Check size={12} /> : null}
+                        </button>
+                    )}
                     {dragControls && (
                         <div
                             className="drag-handle"
@@ -1979,6 +2011,8 @@ const ClipboardItem = ({
 
 export default memo(ClipboardItem, (prevProps, nextProps) => {
     return prevProps.isSelected === nextProps.isSelected &&
+        prevProps.selectionMode === nextProps.selectionMode &&
+        prevProps.multiSelected === nextProps.multiSelected &&
         prevProps.item.id === nextProps.item.id &&
         prevProps.item.content_type === nextProps.item.content_type &&
         prevProps.item.timestamp === nextProps.item.timestamp &&

@@ -69,6 +69,7 @@ fn main() {
             app::commands::rename_tag_globally,
             app::commands::delete_tag_from_all,
             app::commands::create_new_tag,
+            app::commands::detach_tag,
             app::commands::update_pinned_order,
             app::commands::get_db_count,
             app::commands::get_clipboard_content,

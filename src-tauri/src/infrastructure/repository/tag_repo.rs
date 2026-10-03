@@ -15,6 +15,8 @@ pub trait TagRepository {
         -> Result<(), String>;
     fn get_entries_by_tag(&self, tag: &str) -> Result<Vec<ClipboardEntry>, String>;
     fn update_entry_tags(&self, id: i64, tags: Vec<String>) -> Result<(), String>;
+    /// Drop a tag from saved tags and from every entry. Clipboard rows are kept.
+    fn detach(&self, name: &str) -> Result<Vec<(i64, Vec<String>)>, String>;
 }
 
 pub struct SqliteTagRepository {
@@ -321,5 +323,39 @@ impl TagRepository for SqliteTagRepository {
         )
         .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    fn detach(&self, name: &str) -> Result<Vec<(i64, Vec<String>)>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let ids: Vec<i64> = {
+            let mut stmt = conn
+                .prepare("SELECT entry_id FROM entry_tags WHERE tag = ?")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![name], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
+            rows.filter_map(Result::ok).collect()
+        };
+
+        // Grouping only: never delete clipboard_history rows here.
+        conn.execute("DELETE FROM entry_tags WHERE tag = ?", params![name])
+            .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM saved_tags WHERE name = ?", params![name])
+            .map_err(|e| e.to_string())?;
+
+        let mut affected = Vec::with_capacity(ids.len());
+        for id in ids {
+            Self::refresh_entry_tags_json(&conn, id)?;
+            let tags_json: String = conn
+                .query_row(
+                    "SELECT tags FROM clipboard_history WHERE id = ?",
+                    params![id],
+                    |row| row.get(0),
+                )
+                .unwrap_or_else(|_| "[]".to_string());
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            affected.push((id, tags));
+        }
+        Ok(affected)
     }
 }

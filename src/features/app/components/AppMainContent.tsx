@@ -37,6 +37,7 @@ interface AppMainContentProps {
   saveSetting: (key: string, val: string) => void;
   filteredHistory: ClipboardEntry[];
   search: string;
+  activeGroup: string | null;
   pinnedItems: ClipboardEntry[];
   unpinnedItems: ClipboardEntry[];
   compactMode: boolean;
@@ -110,6 +111,7 @@ const AppMainContent = ({
   saveSetting,
   filteredHistory,
   search,
+  activeGroup,
   pinnedItems,
   unpinnedItems,
   compactMode,
@@ -259,6 +261,20 @@ const AppMainContent = ({
         <Clipboard size={40} opacity={0.2} style={{ marginBottom: "12px" }} />
         {search ? (
           <p>{t("no_records")}</p>
+        ) : activeGroup ? (
+          <>
+            <p
+              style={{
+                fontSize: "15px",
+                fontWeight: "bold",
+                color: "var(--text-primary)",
+                marginBottom: "4px"
+              }}
+            >
+              {activeGroup}
+            </p>
+            <p style={{ fontSize: "12px", opacity: 0.6 }}>{t("group_empty")}</p>
+          </>
         ) : (
           <>
             <p
