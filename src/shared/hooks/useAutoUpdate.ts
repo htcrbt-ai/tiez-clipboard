@@ -3,9 +3,8 @@ import { useCallback, useState } from "react";
 export type UpdateStatus = "idle" | "checking" | "downloading" | "ready" | "error";
 
 /**
- * Custom build: startup and repeat update checks are disabled so the official
- * updater cannot replace this install. The hook shape stays the same for the
- * existing dialog, which simply never opens.
+ * Custom build: the updater plugin is not registered, and this hook never
+ * checks or downloads. The dialog shape stays the same and simply never opens.
  */
 export const useAutoUpdate = () => {
   const [isOpen] = useState(false);

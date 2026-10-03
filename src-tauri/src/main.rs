@@ -21,8 +21,9 @@ fn main() {
 
     let _ = dotenvy::dotenv();
 
+    // Updater plugin is not registered. A non-https endpoint makes plugin init
+    // exit before any window opens, and this build must not install official updates.
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
