@@ -53,6 +53,9 @@ interface UseClipboardItemRendererOptions {
   selectionMode: boolean;
   selectedIds: Set<number>;
   onMultiSelect: (event: SelectModifierEvent, item: ClipboardEntry) => void;
+  assignGroups: { id: number; name: string }[];
+  onAddItemToGroup: (item: ClipboardEntry, groupId: number) => void;
+  onCreateGroupForItem: (item: ClipboardEntry, name: string) => void;
 }
 
 type RenderItemContent = (
@@ -98,7 +101,10 @@ export const useClipboardItemRenderer = ({
   handleAIAction,
   selectionMode,
   selectedIds,
-  onMultiSelect
+  onMultiSelect,
+  assignGroups,
+  onAddItemToGroup,
+  onCreateGroupForItem
 }: UseClipboardItemRendererOptions): { renderItemContent: RenderItemContent } => {
   const renderItemContent = useCallback(
     (item: ClipboardEntry, index: number, dragControls?: DragControls, disableLayout?: boolean) => {
@@ -137,6 +143,10 @@ export const useClipboardItemRenderer = ({
           selectionMode={selectionMode}
           multiSelected={selectedIds.has(item.id)}
           onMultiSelect={(event) => onMultiSelect(event, item)}
+          assignGroups={assignGroups}
+          assignGroupsKey={assignGroups.map((group) => `${group.id}:${group.name}`).join("|")}
+          onAddItemToGroup={(groupId) => onAddItemToGroup(item, groupId)}
+          onCreateGroupForItem={(name) => onCreateGroupForItem(item, name)}
           onCopy={(withFormat) =>
             copyToClipboard(item.id, item.content, item.content_type, withFormat, item.is_pinned, item.tags || [])
           }
@@ -242,7 +252,10 @@ export const useClipboardItemRenderer = ({
       handleAIAction,
       selectionMode,
       selectedIds,
-      onMultiSelect
+      onMultiSelect,
+      assignGroups,
+      onAddItemToGroup,
+      onCreateGroupForItem
     ]
   );
 

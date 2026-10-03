@@ -1,24 +1,26 @@
 import { useCallback, useState } from "react";
 
-const STORAGE_KEY = "tiez_active_group";
+const STORAGE_KEY = "tiez_active_group_id";
 
 export const useActiveGroup = () => {
-  const [activeGroup, setActiveGroupState] = useState<string | null>(() => {
+  const [activeGroup, setActiveGroupState] = useState<number | null>(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
-      return saved && saved.trim() ? saved : null;
+      if (!saved) return null;
+      const id = Number(saved);
+      return Number.isFinite(id) ? id : null;
     } catch {
       return null;
     }
   });
 
-  const setActiveGroup = useCallback((name: string | null) => {
-    setActiveGroupState(name);
+  const setActiveGroup = useCallback((id: number | null) => {
+    setActiveGroupState(id);
     try {
-      if (name) {
-        window.localStorage.setItem(STORAGE_KEY, name);
-      } else {
+      if (id == null) {
         window.localStorage.removeItem(STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(STORAGE_KEY, String(id));
       }
     } catch {
       // Ignore storage failures; the in-memory tab still switches.

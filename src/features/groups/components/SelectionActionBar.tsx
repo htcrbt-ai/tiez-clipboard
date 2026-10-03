@@ -5,9 +5,9 @@ interface SelectionActionBarProps {
   t: (key: string) => string;
   count: number;
   groups: GroupTab[];
-  activeGroup: string | null;
-  onAddToGroup: (name: string) => void;
-  onMoveToGroup: (name: string) => void;
+  activeGroup: number | null;
+  onAddToGroup: (id: number) => void;
+  onMoveToGroup: (id: number) => void;
   onCreateAndAdd: (name: string, move: boolean) => void;
   onRemoveFromGroup: () => void;
   onPin: () => void;
@@ -46,11 +46,11 @@ const SelectionActionBar = ({
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
 
-  const applyGroup = (name: string) => {
-    if (mode === "move" && activeGroup) {
-      onMoveToGroup(name);
+  const applyGroup = (id: number) => {
+    if (mode === "move" && activeGroup != null) {
+      onMoveToGroup(id);
     } else {
-      onAddToGroup(name);
+      onAddToGroup(id);
     }
     setOpen(false);
   };
@@ -90,13 +90,13 @@ const SelectionActionBar = ({
           </p>
           <div className="group-picker-list">
             {groups
-              .filter((group) => mode !== "move" || group.name !== activeGroup)
+              .filter((group) => mode !== "move" || group.id !== activeGroup)
               .map((group) => (
                 <button
-                  key={group.name}
+                  key={group.id}
                   type="button"
                   className="group-picker-item"
-                  onClick={() => applyGroup(group.name)}
+                  onClick={() => applyGroup(group.id)}
                 >
                   {group.name}
                 </button>

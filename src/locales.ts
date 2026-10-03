@@ -532,6 +532,10 @@ export const translations = {
         group_bulk_delete_title: "删除选中条目",
         group_bulk_delete_confirm: "确定删除选中的 {count} 条记录？此操作不可撤销。",
         group_action_failed: "分组操作失败",
+        group_move_earlier: "前移",
+        group_move_later: "后移",
+        group_item_add: "把这条加入分组",
+        group_none_yet: "还没有分组，在下面输入名称创建",
         updates_disabled: "自定义构建，已关闭自动更新",
     },
     en: {
@@ -1068,6 +1072,10 @@ export const translations = {
         group_bulk_delete_title: "Delete selected items",
         group_bulk_delete_confirm: "Delete the {count} selected items? This cannot be undone.",
         group_action_failed: "Group action failed",
+        group_move_earlier: "Move earlier",
+        group_move_later: "Move later",
+        group_item_add: "Add this item to a group",
+        group_none_yet: "No groups yet. Type a name below to create one",
         updates_disabled: "Custom build, automatic updates are off",
     },
     tw: {
@@ -1599,6 +1607,10 @@ export const translations = {
         group_bulk_delete_title: "刪除選中條目",
         group_bulk_delete_confirm: "確定刪除選中的 {count} 條記錄？此操作無法復原。",
         group_action_failed: "分組操作失敗",
+        group_move_earlier: "前移",
+        group_move_later: "後移",
+        group_item_add: "把這條加入分組",
+        group_none_yet: "還沒有分組，在下面輸入名稱建立",
         updates_disabled: "自訂組建，已關閉自動更新",
     }
 };

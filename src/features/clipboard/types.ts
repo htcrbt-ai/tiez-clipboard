@@ -36,6 +36,10 @@ export interface ClipboardItemProps {
   selectionMode?: boolean;
   multiSelected?: boolean;
   onMultiSelect?: (event: MouseEvent) => void;
+  assignGroups?: { id: number; name: string }[];
+  assignGroupsKey?: string;
+  onAddItemToGroup?: (groupId: number) => void;
+  onCreateGroupForItem?: (name: string) => void;
   onToggleReveal: (e: MouseEvent) => void;
   onOpen: (e: MouseEvent) => void;
   onTogglePin: (e: MouseEvent) => void;

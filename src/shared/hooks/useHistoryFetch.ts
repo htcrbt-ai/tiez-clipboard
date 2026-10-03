@@ -18,7 +18,7 @@ interface UseHistoryFetchOptions {
   isLoadingMore: boolean;
   hasMore: boolean;
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>;
-  groupName: string | null;
+  groupId: number | null;
 }
 
 export const useHistoryFetch = ({
@@ -35,7 +35,7 @@ export const useHistoryFetch = ({
   isLoadingMore,
   hasMore,
   setIsLoadingMore,
-  groupName
+  groupId
 }: UseHistoryFetchOptions) => {
   const loadingRef = useRef(false);
   const fetchSeqRef = useRef(0);
@@ -71,10 +71,9 @@ export const useHistoryFetch = ({
         }
 
         const hasSearch = debouncedSearch && debouncedSearch.trim().length > 0;
-        const activeGroup = groupName?.trim() ?? "";
 
-        if (activeGroup) {
-          const grouped = await invoke<ClipboardEntry[]>("get_tag_items", { tag: activeGroup });
+        if (groupId != null) {
+          const grouped = await invoke<ClipboardEntry[]>("get_custom_group_items", { groupId });
           if (seq !== fetchSeqRef.current) return;
           setHistory(grouped || []);
           setCurrentOffset((grouped || []).length);
@@ -148,7 +147,7 @@ export const useHistoryFetch = ({
     },
     [
       debouncedSearch,
-      groupName,
+      groupId,
       typeFilter,
       pageSize,
       persistentLimit,
@@ -161,7 +160,7 @@ export const useHistoryFetch = ({
 
   const loadMoreHistory = useCallback(async () => {
     if (loadingRef.current || isLoadingMore || !hasMore) return;
-    if (groupName && groupName.trim().length > 0) return;
+    if (groupId != null) return;
     if (debouncedSearch && debouncedSearch.trim().length > 0) return;
 
     const effectiveOffset = Math.min(currentOffsetRef.current, historyLengthRef.current);
@@ -176,7 +175,7 @@ export const useHistoryFetch = ({
       loadingRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [debouncedSearch, fetchHistory, groupName, hasMore, isLoadingMore, setIsLoadingMore]);
+  }, [debouncedSearch, fetchHistory, groupId, hasMore, isLoadingMore, setIsLoadingMore]);
 
   return { fetchHistory, loadMoreHistory };
 };

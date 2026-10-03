@@ -1,5 +1,5 @@
-use crate::app_state::{AppDataDir, EncryptionQueueState, SessionHistory};
-use crate::database::{has_sensitive_tag, DbState};
+use crate::app_state::{AppDataDir, SessionHistory};
+use crate::database::DbState;
 use crate::domain::models::ClipboardEntry;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::repository::clipboard_repo::ClipboardRepository;
@@ -7,8 +7,7 @@ use crate::infrastructure::repository::tag_repo::TagRepository;
 use crate::services::clipboard::{
     build_entry_preview, derive_rich_text_content, truncate_html_for_preview,
 };
-use crate::services::encryption_queue::{EncryptionAction, EncryptionJob};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 fn normalize_rich_text_item_content(item: &mut ClipboardEntry) {
     if item.content_type != "rich_text" {
@@ -204,8 +203,11 @@ pub fn clear_clipboard_history(
     app_data: State<'_, AppDataDir>,
 ) -> AppResult<()> {
     {
+        let grouped = state.groups.member_ids();
         let mut session_items = session.inner().0.lock().unwrap();
-        session_items.retain(|item| item.is_pinned || !item.tags.is_empty());
+        session_items.retain(|item| {
+            item.is_pinned || !item.tags.is_empty() || grouped.contains(&item.id)
+        });
     }
     let data_dir = app_data.0.lock().unwrap();
     state.repo.clear(Some(&data_dir)).map_err(AppError::from)?;
@@ -215,35 +217,11 @@ pub fn clear_clipboard_history(
 }
 
 #[tauri::command]
-pub fn get_tag_items(
-    state: State<'_, DbState>,
-    session: State<'_, SessionHistory>,
-    tag: String,
-) -> AppResult<Vec<ClipboardEntry>> {
+pub fn get_tag_items(state: State<'_, DbState>, tag: String) -> AppResult<Vec<ClipboardEntry>> {
     let mut history = state
         .tag_repo
         .get_entries_by_tag(&tag)
         .map_err(AppError::from)?;
-
-    {
-        let session_items = session.inner().0.lock().unwrap();
-        for item in session_items.iter().rev() {
-            if !item.tags.iter().any(|entry_tag| entry_tag == &tag) {
-                continue;
-            }
-            if !history.iter().any(|existing| existing.id == item.id && item.id != 0) {
-                history.push(item.clone());
-            }
-        }
-    }
-
-    history.sort_by(|a, b| {
-        b.is_pinned
-            .cmp(&a.is_pinned)
-            .then_with(|| b.pinned_order.cmp(&a.pinned_order))
-            .then_with(|| b.timestamp.cmp(&a.timestamp))
-            .then_with(|| b.id.cmp(&a.id))
-    });
 
     for item in &mut history {
         normalize_rich_text_item_content(item);
@@ -316,6 +294,17 @@ pub fn delete_tag_from_all(
     app_data: State<'_, AppDataDir>,
     tag_name: String,
 ) -> AppResult<()> {
+    let tagged_ids: Vec<i64> = {
+        let conn = state.conn.lock().map_err(|e| AppError::from(e.to_string()))?;
+        let mut stmt = conn
+            .prepare("SELECT entry_id FROM entry_tags WHERE tag = ?")
+            .map_err(|e| AppError::from(e.to_string()))?;
+        let rows = stmt
+            .query_map(rusqlite::params![tag_name], |row| row.get(0))
+            .map_err(|e| AppError::from(e.to_string()))?;
+        rows.filter_map(Result::ok).collect()
+    };
+
     {
         let mut session_items = session.inner().0.lock().unwrap();
         session_items.retain(|item| !item.tags.contains(&tag_name));
@@ -325,50 +314,13 @@ pub fn delete_tag_from_all(
     state
         .tag_repo
         .delete_globally(&tag_name, Some(&data_dir))
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    state.groups.forget_entries(&tagged_ids).map_err(AppError::from)
 }
 
 #[tauri::command]
 pub fn create_new_tag(state: State<'_, DbState>, tag_name: String) -> AppResult<()> {
     state.tag_repo.create(&tag_name).map_err(AppError::from)
-}
-
-/// Remove a group (tag) without deleting the clipboard items that carried it.
-#[tauri::command]
-pub fn detach_tag(
-    app_handle: AppHandle,
-    state: State<'_, DbState>,
-    session: State<'_, SessionHistory>,
-    tag_name: String,
-) -> AppResult<()> {
-    let tag_name = tag_name.trim().to_string();
-    if tag_name.is_empty() {
-        return Err(AppError::Validation("Empty group name".to_string()));
-    }
-
-    {
-        let mut session_items = session.inner().0.lock().unwrap();
-        for item in session_items.iter_mut() {
-            item.tags.retain(|tag| tag != &tag_name);
-        }
-    }
-
-    let affected = state.tag_repo.detach(&tag_name).map_err(AppError::from)?;
-    if has_sensitive_tag(std::slice::from_ref(&tag_name)) {
-        let queue = app_handle.state::<EncryptionQueueState>();
-        for (id, tags) in affected {
-            if !has_sensitive_tag(&tags) {
-                queue.0.enqueue(EncryptionJob {
-                    id,
-                    action: EncryptionAction::Decrypt,
-                });
-            }
-        }
-    }
-
-    let _ = app_handle.emit("clipboard-changed", ());
-    crate::services::cloud_sync::request_cloud_sync(app_handle);
-    Ok(())
 }
 
 #[tauri::command]

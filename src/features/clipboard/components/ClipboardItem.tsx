@@ -28,7 +28,8 @@ import {
     ImageOff,
     FileQuestion,
     GripVertical,
-    Check
+    Check,
+    FolderPlus
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ClipboardItemProps } from "../types";
@@ -677,6 +678,87 @@ const getFallbackFileIcon = (filePath: string) => {
     }
 };
 
+const ItemGroupMenu = ({
+    t,
+    groups,
+    onAdd,
+    onCreate
+}: {
+    t: (key: string) => string;
+    groups: { id: number; name: string }[];
+    onAdd: (groupId: number) => void;
+    onCreate?: (name: string) => void;
+}) => {
+    const [open, setOpen] = useState(false);
+    const [draft, setDraft] = useState("");
+    const rootRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const close = (event: MouseEvent) => {
+            if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+        };
+        window.addEventListener("mousedown", close);
+        return () => window.removeEventListener("mousedown", close);
+    }, [open]);
+
+    return (
+        <div className="item-group-menu" ref={rootRef} onMouseDown={(event) => event.stopPropagation()}>
+            <button
+                type="button"
+                className="item-group-button"
+                data-testid="item-group-button"
+                title={t("group_item_add")}
+                onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setOpen((value) => !value);
+                }}
+            >
+                <FolderPlus size={13} />
+            </button>
+            {open && (
+                <div className="item-group-popover" data-testid="item-group-popover">
+                    {groups.length === 0 && <p className="group-picker-hint">{t("group_none_yet")}</p>}
+                    {groups.map((group) => (
+                        <button
+                            key={group.id}
+                            type="button"
+                            onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onAdd(group.id);
+                                setOpen(false);
+                            }}
+                        >
+                            {group.name}
+                        </button>
+                    ))}
+                    <form
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            const name = draft.trim();
+                            if (!name || !onCreate) return;
+                            onCreate(name);
+                            setDraft("");
+                            setOpen(false);
+                        }}
+                    >
+                        <input
+                            value={draft}
+                            placeholder={t("group_name_placeholder")}
+                            aria-label={t("group_new")}
+                            onChange={(event) => setDraft(event.target.value)}
+                            onKeyDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                        />
+                    </form>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ClipboardItem = ({
     item,
     isSelected,
@@ -694,6 +776,9 @@ const ClipboardItem = ({
     selectionMode = false,
     multiSelected = false,
     onMultiSelect,
+    assignGroups = [],
+    onAddItemToGroup,
+    onCreateGroupForItem,
     onToggleReveal,
     onOpen,
     onTogglePin,
@@ -1627,6 +1712,14 @@ const ClipboardItem = ({
         >
             <div className="item-meta">
                 <div className="item-meta-left">
+                    {onAddItemToGroup && (
+                        <ItemGroupMenu
+                            t={t}
+                            groups={assignGroups}
+                            onAdd={onAddItemToGroup}
+                            onCreate={onCreateGroupForItem}
+                        />
+                    )}
                     {selectionMode && (
                         <button
                             type="button"
@@ -2013,6 +2106,7 @@ export default memo(ClipboardItem, (prevProps, nextProps) => {
     return prevProps.isSelected === nextProps.isSelected &&
         prevProps.selectionMode === nextProps.selectionMode &&
         prevProps.multiSelected === nextProps.multiSelected &&
+        prevProps.assignGroupsKey === nextProps.assignGroupsKey &&
         prevProps.item.id === nextProps.item.id &&
         prevProps.item.content_type === nextProps.item.content_type &&
         prevProps.item.timestamp === nextProps.item.timestamp &&

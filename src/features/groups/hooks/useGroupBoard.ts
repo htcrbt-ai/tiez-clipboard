@@ -3,18 +3,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ClipboardEntry } from "../../../shared/types";
 import { isBrowserPreview } from "../../../shared/lib/tauriRuntime";
-import { createPreviewHistory, PREVIEW_GROUP_NAMES } from "../previewData";
+import { createPreviewHistory } from "../previewData";
 import type { GroupTab } from "../components/GroupTabBar";
-
-const PROTECTED_GROUP_NAMES = new Set(["sensitive", "密码", "password"]);
 
 interface UseGroupBoardOptions {
   t: (key: string) => string;
-  activeGroup: string | null;
-  setActiveGroup: (name: string | null) => void;
+  activeGroup: number | null;
+  setActiveGroup: (id: number | null) => void;
   history: ClipboardEntry[];
   setHistory: (value: ClipboardEntry[] | ((prev: ClipboardEntry[]) => ClipboardEntry[])) => void;
-  filteredHistory: ClipboardEntry[];
   fetchHistory: (reset?: boolean) => void;
   openConfirm: (opts: { title: string; message: string; onConfirm: () => void }) => void;
   closeConfirm: () => void;
@@ -29,13 +26,19 @@ export type SelectModifierEvent = {
   shiftKey: boolean;
 };
 
-const withTag = (tags: string[] | undefined, name: string) => {
-  const next = [...(tags || [])];
-  if (!next.includes(name)) next.push(name);
-  return next;
-};
+interface IdRemap {
+  from: number;
+  to: number;
+}
 
-const withoutTag = (tags: string[] | undefined, name: string) => (tags || []).filter((tag) => tag !== name);
+interface GroupRow {
+  id: number;
+  name: string;
+  count: number;
+  sort_order?: number;
+}
+
+const emptyMembership = () => new Map<number, Set<number>>();
 
 export const useGroupBoard = ({
   t,
@@ -43,7 +46,6 @@ export const useGroupBoard = ({
   setActiveGroup,
   history,
   setHistory,
-  filteredHistory,
   fetchHistory,
   openConfirm,
   closeConfirm,
@@ -52,24 +54,21 @@ export const useGroupBoard = ({
   editingTagsId
 }: UseGroupBoardOptions) => {
   const preview = isBrowserPreview();
-  const [groups, setGroups] = useState<GroupTab[]>(() =>
-    preview ? PREVIEW_GROUP_NAMES.map((name) => ({ name, count: 0 })) : []
-  );
+  const [groups, setGroups] = useState<GroupTab[]>([]);
   const [groupsLoaded, setGroupsLoaded] = useState(preview);
+  const [membership, setMembership] = useState<Map<number, Set<number>>>(emptyMembership);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const anchorRef = useRef(-1);
-  const filteredRef = useRef(filteredHistory);
+  const filteredRef = useRef<ClipboardEntry[]>([]);
   const groupsRef = useRef(groups);
   const activeGroupRef = useRef(activeGroup);
   const showHotkeysRef = useRef(showGroupHotkeys);
   const editingTagsRef = useRef(editingTagsId);
   const selectionModeRef = useRef(selectionMode);
   const selectedIdsRef = useRef(selectedIds);
+  const nextPreviewId = useRef(1);
 
-  useEffect(() => {
-    filteredRef.current = filteredHistory;
-  }, [filteredHistory]);
   useEffect(() => {
     activeGroupRef.current = activeGroup;
   }, [activeGroup]);
@@ -85,6 +84,9 @@ export const useGroupBoard = ({
   useEffect(() => {
     selectedIdsRef.current = selectedIds;
   }, [selectedIds]);
+  useEffect(() => {
+    groupsRef.current = groups;
+  }, [groups]);
 
   const refreshGroups = useCallback(async () => {
     if (isBrowserPreview()) {
@@ -92,11 +94,14 @@ export const useGroupBoard = ({
       return;
     }
     try {
-      const tagMap = await invoke<Record<string, number>>("get_all_tags_info");
-      const next = Object.entries(tagMap || {})
-        .map(([name, count]) => ({ name, count: Number(count) || 0 }))
-        .sort((a, b) => a.name.localeCompare(b.name, "zh"));
-      setGroups(next);
+      const rows = await invoke<GroupRow[]>("list_custom_groups");
+      setGroups(
+        (rows || []).map((row) => ({
+          id: row.id,
+          name: row.name,
+          count: Number(row.count) || 0
+        }))
+      );
       setGroupsLoaded(true);
     } catch (error) {
       console.error("加载分组失败", error);
@@ -127,7 +132,7 @@ export const useGroupBoard = ({
 
   useEffect(() => {
     if (!groupsLoaded || preview) return;
-    if (activeGroup && !groups.some((group) => group.name === activeGroup)) {
+    if (activeGroup != null && !groups.some((group) => group.id === activeGroup)) {
       setActiveGroup(null);
     }
   }, [activeGroup, groups, groupsLoaded, preview, setActiveGroup]);
@@ -138,23 +143,18 @@ export const useGroupBoard = ({
     anchorRef.current = -1;
   }, [activeGroup]);
 
+  const previewMemberIds = useMemo(() => {
+    if (!preview || activeGroup == null) return null;
+    return membership.get(activeGroup) ?? new Set<number>();
+  }, [activeGroup, membership, preview]);
+
   const displayGroups = useMemo(() => {
     if (!preview) return groups;
-    const counts = new Map<string, number>();
-    for (const group of groups) counts.set(group.name, 0);
-    for (const item of history) {
-      for (const tag of item.tags || []) {
-        counts.set(tag, (counts.get(tag) || 0) + 1);
-      }
-    }
-    return [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name, "zh"));
-  }, [groups, history, preview]);
-
-  useEffect(() => {
-    groupsRef.current = displayGroups;
-  }, [displayGroups]);
+    return groups.map((group) => ({
+      ...group,
+      count: membership.get(group.id)?.size ?? 0
+    }));
+  }, [groups, membership, preview]);
 
   const selectedItems = useMemo(
     () => history.filter((item) => selectedIds.has(item.id)),
@@ -230,7 +230,7 @@ export const useGroupBoard = ({
 
       if (event.key === "Tab" && event.ctrlKey && !event.altKey && !event.metaKey) {
         event.preventDefault();
-        const order: Array<string | null> = [null, ...groupsRef.current.map((group) => group.name)];
+        const order: Array<number | null> = [null, ...groupsRef.current.map((group) => group.id)];
         const current = order.indexOf(activeGroupRef.current);
         const delta = event.shiftKey ? -1 : 1;
         const nextIndex = (current + delta + order.length) % order.length;
@@ -247,87 +247,64 @@ export const useGroupBoard = ({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [selectAllVisible, setActiveGroup]);
 
-  const ensureGroup = useCallback((name: string) => {
-    setGroups((prev) => (prev.some((group) => group.name === name) ? prev : [...prev, { name, count: 0 }]));
-  }, []);
-
-  const applyTags = useCallback(
-    async (items: ClipboardEntry[], nextTagsFor: (item: ClipboardEntry) => string[]) => {
-      if (items.length === 0) return;
-      if (preview) {
-        const byId = new Map(items.map((item) => [item.id, nextTagsFor(item)]));
-        setHistory((prev) =>
-          prev.map((item) => (byId.has(item.id) ? { ...item, tags: byId.get(item.id) || [] } : item))
-        );
-        for (const tags of byId.values()) {
-          tags.forEach((tag) => ensureGroup(tag));
-        }
-        return;
-      }
-
-      try {
-        for (const item of items) {
-          const nextTags = nextTagsFor(item);
-          const unchanged =
-            nextTags.length === (item.tags || []).length &&
-            nextTags.every((tag, index) => tag === (item.tags || [])[index]);
-          if (unchanged) continue;
-          const newId = await invoke<number>("update_tags", { id: item.id, tags: nextTags });
-          setHistory((prev) =>
-            prev.map((entry) => (entry.id === item.id ? { ...entry, id: newId, tags: nextTags } : entry))
-          );
-        }
-        await refreshGroups();
-        fetchHistory(true);
-      } catch (error) {
-        console.error(error);
-        pushToast(t("group_action_failed"), 3000);
-      }
+  const applyRemaps = useCallback(
+    (remaps: IdRemap[]) => {
+      if (remaps.length === 0) return;
+      const map = new Map(remaps.map((row) => [row.from, row.to]));
+      setHistory((prev) => prev.map((item) => (map.has(item.id) ? { ...item, id: map.get(item.id) || item.id } : item)));
     },
-    [ensureGroup, fetchHistory, preview, pushToast, refreshGroups, setHistory, t]
+    [setHistory]
   );
+
+  const rememberPreview = useCallback((groupId: number, ids: number[], removeFrom?: number | null) => {
+    setMembership((prev) => {
+      const next = new Map(prev);
+      if (removeFrom != null) {
+        const source = new Set(next.get(removeFrom) || []);
+        ids.forEach((id) => source.delete(id));
+        next.set(removeFrom, source);
+      }
+      const target = new Set(next.get(groupId) || []);
+      ids.forEach((id) => target.add(id));
+      next.set(groupId, target);
+      return next;
+    });
+  }, []);
 
   const createGroup = useCallback(
     async (rawName: string) => {
       const name = rawName.trim();
-      if (!name) return false;
-      ensureGroup(name);
-      setActiveGroup(name);
-      if (preview) return true;
+      if (!name) return null;
+      if (preview) {
+        const id = nextPreviewId.current++;
+        setGroups((prev) => [...prev, { id, name, count: 0 }]);
+        setActiveGroup(id);
+        return id;
+      }
       try {
-        await invoke("create_new_tag", { tagName: name });
+        const created = await invoke<GroupRow>("create_custom_group", { name });
         await refreshGroups();
-        return true;
+        setActiveGroup(created.id);
+        return created.id;
       } catch (error) {
         console.error(error);
         pushToast(t("group_action_failed"), 3000);
-        return false;
+        return null;
       }
     },
-    [ensureGroup, preview, pushToast, refreshGroups, setActiveGroup, t]
+    [preview, pushToast, refreshGroups, setActiveGroup, t]
   );
 
   const renameGroup = useCallback(
-    async (oldName: string, rawName: string) => {
+    async (id: number, rawName: string) => {
       const name = rawName.trim();
-      if (!name || name === oldName) return false;
-      if (PROTECTED_GROUP_NAMES.has(oldName)) {
-        pushToast(t("group_rename_protected"), 3000);
-        return false;
-      }
-      setGroups((prev) => prev.map((group) => (group.name === oldName ? { ...group, name } : group)));
-      if (activeGroupRef.current === oldName) setActiveGroup(name);
-      setHistory((prev) =>
-        prev.map((item) => ({
-          ...item,
-          tags: (item.tags || []).map((tag) => (tag === oldName ? name : tag))
-        }))
-      );
+      const current = groupsRef.current.find((group) => group.id === id);
+      if (!name || !current || name === current.name) return false;
+      setGroups((prev) => prev.map((group) => (group.id === id ? { ...group, name } : group)));
       if (preview) return true;
       try {
-        await invoke("rename_tag_globally", { oldName, newName: name });
+        await invoke("rename_custom_group", { id, name });
         await refreshGroups();
-        fetchHistory(true);
         return true;
       } catch (error) {
         console.error(error);
@@ -336,27 +313,48 @@ export const useGroupBoard = ({
         return false;
       }
     },
-    [fetchHistory, preview, pushToast, refreshGroups, setActiveGroup, setHistory, t]
+    [preview, pushToast, refreshGroups, t]
   );
 
-  const notifyProtectedGroup = useCallback(() => {
-    pushToast(t("group_rename_protected"), 3000);
-  }, [pushToast, t]);
+  const reorderGroup = useCallback(
+    async (id: number, direction: -1 | 1) => {
+      const list = groupsRef.current;
+      const index = list.findIndex((group) => group.id === id);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= list.length) return;
+      const reordered = [...list];
+      const [moved] = reordered.splice(index, 1);
+      reordered.splice(nextIndex, 0, moved);
+      setGroups(reordered);
+      if (preview) return;
+      try {
+        await invoke("reorder_custom_groups", { ids: reordered.map((group) => group.id) });
+      } catch (error) {
+        console.error(error);
+        pushToast(t("group_action_failed"), 3000);
+        await refreshGroups();
+      }
+    },
+    [preview, pushToast, refreshGroups, t]
+  );
 
   const deleteGroup = useCallback(
-    (name: string) => {
+    (id: number) => {
+      const group = groupsRef.current.find((item) => item.id === id);
       openConfirm({
         title: t("group_delete_title"),
-        message: t("group_delete_confirm").replace("{name}", name),
+        message: t("group_delete_confirm").replace("{name}", group?.name || ""),
         onConfirm: () => {
           closeConfirm();
-          setGroups((prev) => prev.filter((group) => group.name !== name));
-          if (activeGroupRef.current === name) setActiveGroup(null);
-          setHistory((prev) =>
-            prev.map((item) => ({ ...item, tags: withoutTag(item.tags, name) }))
-          );
+          setGroups((prev) => prev.filter((item) => item.id !== id));
+          setMembership((prev) => {
+            const next = new Map(prev);
+            next.delete(id);
+            return next;
+          });
+          if (activeGroupRef.current === id) setActiveGroup(null);
           if (preview) return;
-          invoke("detach_tag", { tagName: name })
+          invoke("delete_custom_group", { id })
             .then(() => {
               void refreshGroups();
               fetchHistory(true);
@@ -369,44 +367,134 @@ export const useGroupBoard = ({
         }
       });
     },
-    [closeConfirm, fetchHistory, openConfirm, preview, pushToast, refreshGroups, setActiveGroup, setHistory, t]
+    [closeConfirm, fetchHistory, openConfirm, preview, pushToast, refreshGroups, setActiveGroup, t]
+  );
+
+  const mutateMembership = useCallback(
+    async (items: ClipboardEntry[], run: (ids: number[]) => Promise<IdRemap[] | void>) => {
+      if (items.length === 0) return;
+      const ids = items.map((item) => item.id);
+      try {
+        const remaps = (await run(ids)) || [];
+        applyRemaps(remaps);
+        await refreshGroups();
+        fetchHistory(true);
+      } catch (error) {
+        console.error(error);
+        pushToast(t("group_action_failed"), 3000);
+      }
+    },
+    [applyRemaps, fetchHistory, pushToast, refreshGroups, t]
   );
 
   const addToGroup = useCallback(
-    (name: string) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      ensureGroup(trimmed);
-      void applyTags(selectedItems, (item) => withTag(item.tags, trimmed));
+    (groupId: number, items = selectedItems) => {
+      if (preview) {
+        rememberPreview(groupId, items.map((item) => item.id));
+        clearSelection();
+        return;
+      }
+      void mutateMembership(items, (ids) =>
+        invoke<IdRemap[]>("add_items_to_group", { groupId, entryIds: ids })
+      );
       clearSelection();
     },
-    [applyTags, clearSelection, ensureGroup, selectedItems]
+    [clearSelection, mutateMembership, preview, rememberPreview, selectedItems]
   );
 
   const moveToGroup = useCallback(
-    (name: string) => {
-      const trimmed = name.trim();
-      if (!trimmed || !activeGroup) return;
-      ensureGroup(trimmed);
-      void applyTags(selectedItems, (item) => withTag(withoutTag(item.tags, activeGroup), trimmed));
+    (groupId: number) => {
+      if (activeGroup == null || groupId === activeGroup) return;
+      if (preview) {
+        rememberPreview(
+          groupId,
+          selectedItems.map((item) => item.id),
+          activeGroup
+        );
+        clearSelection();
+        return;
+      }
+      void mutateMembership(selectedItems, (ids) =>
+        invoke<IdRemap[]>("move_items_to_group", {
+          fromGroupId: activeGroup,
+          toGroupId: groupId,
+          entryIds: ids
+        })
+      );
       clearSelection();
     },
-    [activeGroup, applyTags, clearSelection, ensureGroup, selectedItems]
+    [activeGroup, clearSelection, mutateMembership, preview, rememberPreview, selectedItems]
   );
 
   const createAndAdd = useCallback(
-    (name: string, move: boolean) => {
-      if (move) moveToGroup(name);
-      else addToGroup(name);
+    async (name: string, move: boolean, items = selectedItems) => {
+      const id = await createGroup(name);
+      if (id == null) return;
+      if (move) {
+        if (preview) {
+          rememberPreview(
+            id,
+            items.map((item) => item.id),
+            activeGroupRef.current
+          );
+        } else if (activeGroupRef.current != null) {
+          await mutateMembership(items, (entryIds) =>
+            invoke<IdRemap[]>("move_items_to_group", {
+              fromGroupId: activeGroupRef.current,
+              toGroupId: id,
+              entryIds
+            })
+          );
+        } else {
+          await mutateMembership(items, (entryIds) =>
+            invoke<IdRemap[]>("add_items_to_group", { groupId: id, entryIds })
+          );
+        }
+      } else if (preview) {
+        rememberPreview(id, items.map((item) => item.id));
+      } else {
+        await mutateMembership(items, (entryIds) =>
+          invoke<IdRemap[]>("add_items_to_group", { groupId: id, entryIds })
+        );
+      }
+      clearSelection();
     },
-    [addToGroup, moveToGroup]
+    [clearSelection, createGroup, mutateMembership, preview, rememberPreview, selectedItems]
   );
 
   const removeFromGroup = useCallback(() => {
-    if (!activeGroup) return;
-    void applyTags(selectedItems, (item) => withoutTag(item.tags, activeGroup));
+    if (activeGroup == null) return;
+    if (preview) {
+      const ids = selectedItems.map((item) => item.id);
+      setMembership((prev) => {
+        const next = new Map(prev);
+        const source = new Set(next.get(activeGroup) || []);
+        ids.forEach((id) => source.delete(id));
+        next.set(activeGroup, source);
+        return next;
+      });
+      clearSelection();
+      return;
+    }
+    void mutateMembership(selectedItems, (ids) =>
+      invoke("remove_items_from_group", { groupId: activeGroup, entryIds: ids })
+    );
     clearSelection();
-  }, [activeGroup, applyTags, clearSelection, selectedItems]);
+  }, [activeGroup, clearSelection, mutateMembership, preview, selectedItems]);
+
+  const addItemToGroup = useCallback(
+    (item: ClipboardEntry, groupId: number) => {
+      addToGroup(groupId, [item]);
+    },
+    [addToGroup]
+  );
+
+  const createGroupForItem = useCallback(
+    (item: ClipboardEntry, name: string) => {
+      void createAndAdd(name, false, [item]);
+    },
+    [createAndAdd]
+  );
 
   const setPinned = useCallback(
     async (pinned: boolean) => {
@@ -445,6 +533,14 @@ export const useGroupBoard = ({
         if (preview) {
           const idSet = new Set(ids);
           setHistory((prev) => prev.filter((item) => !idSet.has(item.id)));
+          setMembership((prev) => {
+            const next = new Map(prev);
+            for (const [groupId, members] of next) {
+              const kept = new Set([...members].filter((id) => !idSet.has(id)));
+              next.set(groupId, kept);
+            }
+            return next;
+          });
           clearSelection();
           return;
         }
@@ -476,6 +572,8 @@ export const useGroupBoard = ({
 
   return {
     groups: displayGroups,
+    previewMemberIds,
+    filteredRef,
     selectionMode,
     selectedIds,
     selectedCount: selectedItems.length,
@@ -486,12 +584,16 @@ export const useGroupBoard = ({
     clearSelection,
     createGroup,
     renameGroup,
-    notifyProtectedGroup,
+    reorderGroup,
     deleteGroup,
-    addToGroup,
+    addToGroup: (groupId: number) => addToGroup(groupId),
     moveToGroup,
-    createAndAdd,
+    createAndAdd: (name: string, move: boolean) => {
+      void createAndAdd(name, move);
+    },
     removeFromGroup,
+    addItemToGroup,
+    createGroupForItem,
     pinSelected: () => {
       void setPinned(true);
     },

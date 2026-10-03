@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { CheckSquare, Plus } from "lucide-react";
 
 export interface GroupTab {
+  id: number;
   name: string;
   count: number;
 }
@@ -9,17 +10,15 @@ export interface GroupTab {
 interface GroupTabBarProps {
   t: (key: string) => string;
   groups: GroupTab[];
-  activeGroup: string | null;
+  activeGroup: number | null;
   selectionMode: boolean;
-  onSelectGroup: (name: string | null) => void;
-  onCreateGroup: (name: string) => Promise<boolean>;
-  onRenameGroup: (oldName: string, newName: string) => Promise<boolean>;
-  onProtectedGroup: () => void;
-  onDeleteGroup: (name: string) => void;
+  onSelectGroup: (id: number | null) => void;
+  onCreateGroup: (name: string) => Promise<number | null>;
+  onRenameGroup: (id: number, name: string) => Promise<boolean>;
+  onDeleteGroup: (id: number) => void;
+  onReorderGroup: (id: number, direction: -1 | 1) => void;
   onToggleSelectionMode: () => void;
 }
-
-const PROTECTED_GROUP_NAMES = new Set(["sensitive", "密码", "password"]);
 
 const GroupTabBar = ({
   t,
@@ -29,14 +28,14 @@ const GroupTabBar = ({
   onSelectGroup,
   onCreateGroup,
   onRenameGroup,
-  onProtectedGroup,
   onDeleteGroup,
+  onReorderGroup,
   onToggleSelectionMode
 }: GroupTabBarProps) => {
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState("");
-  const [editingName, setEditingName] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ name: string; x: number; y: number } | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ id: number; x: number; y: number } | null>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const skipBlurRef = useRef(false);
@@ -47,8 +46,8 @@ const GroupTabBar = ({
   }, [creating]);
 
   useEffect(() => {
-    if (editingName) renameInputRef.current?.focus();
-  }, [editingName]);
+    if (editingId != null) renameInputRef.current?.focus();
+  }, [editingId]);
 
   useEffect(() => {
     if (!menu) return;
@@ -71,38 +70,34 @@ const GroupTabBar = ({
       commitRef.current = false;
       return;
     }
-    const ok = await onCreateGroup(name);
-    if (ok) {
+    const id = await onCreateGroup(name);
+    if (id != null) {
       setCreating(false);
       setDraft("");
     }
     commitRef.current = false;
   };
 
-  const submitRename = async (oldName: string) => {
+  const submitRename = async (id: number) => {
     if (commitRef.current) return;
     commitRef.current = true;
     const name = draft.trim();
-    setEditingName(null);
+    setEditingId(null);
     setDraft("");
-    if (!name || name === oldName) {
-      commitRef.current = false;
-      return;
+    if (name) {
+      await onRenameGroup(id, name);
     }
-    await onRenameGroup(oldName, name);
     commitRef.current = false;
   };
 
-  const startRename = (name: string) => {
+  const startRename = (id: number, name: string) => {
     setMenu(null);
-    if (PROTECTED_GROUP_NAMES.has(name)) {
-      onProtectedGroup();
-      return;
-    }
     setCreating(false);
-    setEditingName(name);
+    setEditingId(id);
     setDraft(name);
   };
+
+  const menuIndex = menu ? groups.findIndex((group) => group.id === menu.id) : -1;
 
   return (
     <div className="group-tab-bar window-no-drag" data-testid="group-tab-bar">
@@ -117,9 +112,9 @@ const GroupTabBar = ({
           {t("group_all")}
         </button>
         {groups.map((group) =>
-          editingName === group.name ? (
+          editingId === group.id ? (
             <input
-              key={group.name}
+              key={group.id}
               ref={renameInputRef}
               className="group-inline-input"
               value={draft}
@@ -130,7 +125,7 @@ const GroupTabBar = ({
                   skipBlurRef.current = false;
                   return;
                 }
-                void submitRename(group.name);
+                void submitRename(group.id);
               }}
               onKeyDown={(event) => {
                 event.stopPropagation();
@@ -140,31 +135,31 @@ const GroupTabBar = ({
                 } else if (event.key === "Escape") {
                   event.preventDefault();
                   skipBlurRef.current = true;
-                  setEditingName(null);
+                  setEditingId(null);
                   setDraft("");
                 }
               }}
             />
           ) : (
             <button
-              key={group.name}
+              key={group.id}
               type="button"
-              className={`group-tab ${activeGroup === group.name ? "active" : ""}`}
+              className={`group-tab ${activeGroup === group.id ? "active" : ""}`}
               data-testid={`group-tab-${group.name}`}
               title={group.name}
-              onClick={() => onSelectGroup(group.name)}
+              onClick={() => onSelectGroup(group.id)}
               onDoubleClick={(event) => {
                 event.preventDefault();
-                startRename(group.name);
+                startRename(group.id, group.name);
               }}
               onContextMenu={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                onSelectGroup(group.name);
+                onSelectGroup(group.id);
                 const menuWidth = 180;
-                const menuHeight = 84;
+                const menuHeight = 150;
                 setMenu({
-                  name: group.name,
+                  id: group.id,
                   x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
                   y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8))
                 });
@@ -182,6 +177,7 @@ const GroupTabBar = ({
             value={draft}
             placeholder={t("group_name_placeholder")}
             aria-label={t("group_new")}
+            data-testid="group-create-input"
             onChange={(event) => setDraft(event.target.value)}
             onBlur={() => {
               if (skipBlurRef.current) {
@@ -210,7 +206,7 @@ const GroupTabBar = ({
             data-testid="group-tab-add"
             title={t("group_new")}
             onClick={() => {
-              setEditingName(null);
+              setEditingId(null);
               setDraft("");
               setCreating(true);
             }}
@@ -236,17 +232,41 @@ const GroupTabBar = ({
           style={{ top: menu.y, left: menu.x }}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          {!PROTECTED_GROUP_NAMES.has(menu.name) && (
-            <button type="button" onClick={() => startRename(menu.name)}>
-              {t("group_rename")}
-            </button>
-          )}
           <button
             type="button"
             onClick={() => {
-              const name = menu.name;
+              const group = groups.find((item) => item.id === menu.id);
+              if (group) startRename(group.id, group.name);
+            }}
+          >
+            {t("group_rename")}
+          </button>
+          <button
+            type="button"
+            disabled={menuIndex <= 0}
+            onClick={() => {
+              onReorderGroup(menu.id, -1);
               setMenu(null);
-              onDeleteGroup(name);
+            }}
+          >
+            {t("group_move_earlier")}
+          </button>
+          <button
+            type="button"
+            disabled={menuIndex < 0 || menuIndex >= groups.length - 1}
+            onClick={() => {
+              onReorderGroup(menu.id, 1);
+              setMenu(null);
+            }}
+          >
+            {t("group_move_later")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const id = menu.id;
+              setMenu(null);
+              onDeleteGroup(id);
             }}
           >
             {t("group_delete_keep_items")}

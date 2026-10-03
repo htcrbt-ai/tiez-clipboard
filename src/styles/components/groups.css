@@ -222,6 +222,57 @@
   border-color: var(--accent-color);
 }
 
+.item-group-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.item-group-button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.item-group-button:hover,
+.item-group-menu:focus-within .item-group-button {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.item-group-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 160px;
+  max-width: 220px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--bg-secondary, var(--bg-toolbar));
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+}
+
+.item-group-popover button,
+.item-group-popover input {
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+}
+
+.item-group-popover form {
+  margin-top: 4px;
+}
+
 .history-item.multi-selected {
   outline: 2px solid var(--accent-color);
   outline-offset: -2px;

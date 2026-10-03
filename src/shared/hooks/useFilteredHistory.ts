@@ -5,20 +5,20 @@ interface UseFilteredHistoryOptions {
   history: ClipboardEntry[];
   search: string;
   typeFilter: string | null;
-  activeGroup?: string | null;
+  onlyIds?: Set<number> | null;
 }
 
 export const useFilteredHistory = ({
   history,
   search,
   typeFilter,
-  activeGroup
+  onlyIds = null
 }: UseFilteredHistoryOptions) => {
   return useMemo(() => {
     const lowerSearch = search.toLowerCase();
 
     const filtered = history.filter((item) => {
-      if (activeGroup && !(item.tags || []).includes(activeGroup)) {
+      if (onlyIds && !onlyIds.has(item.id)) {
         return false;
       }
 
@@ -57,5 +57,5 @@ export const useFilteredHistory = ({
       }
       return b.timestamp - a.timestamp;
     });
-  }, [activeGroup, history, search, typeFilter]);
+  }, [history, onlyIds, search, typeFilter]);
 };

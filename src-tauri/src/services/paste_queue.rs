@@ -201,7 +201,8 @@ pub async fn paste_next_step(app_handle: tauri::AppHandle) {
 
             if actual_delete && id > 0 {
                 if let Ok(Some(entry)) = db_state.repo.get_entry_by_id(id) {
-                    if entry.is_pinned || !entry.tags.is_empty() {
+                    if entry.is_pinned || !entry.tags.is_empty() || db_state.groups.contains_entry(id)
+                    {
                         actual_delete = false;
                     }
                 }

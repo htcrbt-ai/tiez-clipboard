@@ -385,7 +385,7 @@ const App = () => {
     isLoadingMore,
     hasMore,
     setIsLoadingMore,
-    groupName: activeGroup
+    groupId: activeGroup
   });
 
   const t = useCallback((key: string) => {
@@ -937,13 +937,6 @@ const App = () => {
   };
   */
 
-  const filteredHistory = useFilteredHistory({
-    history,
-    search,
-    typeFilter,
-    activeGroup
-  });
-
   const showMainList =
     !showSettings && !effectiveShowTagManager && !effectiveShowEmojiPanel && !chatMode;
 
@@ -953,7 +946,6 @@ const App = () => {
     setActiveGroup,
     history,
     setHistory,
-    filteredHistory,
     fetchHistory,
     openConfirm,
     closeConfirm,
@@ -962,11 +954,16 @@ const App = () => {
     editingTagsId
   });
 
-  const headerTags = useMemo(() => {
-    const set = new Set<string>(allTags);
-    for (const group of groupBoard.groups) set.add(group.name);
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "zh"));
-  }, [allTags, groupBoard.groups]);
+  const filteredHistory = useFilteredHistory({
+    history,
+    search,
+    typeFilter,
+    onlyIds: groupBoard.previewMemberIds
+  });
+  groupBoard.filteredRef.current = filteredHistory;
+
+  const activeGroupName =
+    groupBoard.groups.find((group) => group.id === activeGroup)?.name ?? null;
 
   const effectiveHasMore = hasMore && filteredHistory.length >= PAGE_SIZE;
 
@@ -1016,7 +1013,7 @@ const App = () => {
     isWindowPinned,
     editingTagsId,
     tagInput,
-    allTags: headerTags,
+    allTags,
     tagColors,
     theme,
     language,
@@ -1044,7 +1041,10 @@ const App = () => {
     handleAIAction,
     selectionMode: groupBoard.selectionMode,
     selectedIds: groupBoard.selectedIds,
-    onMultiSelect: groupBoard.handleMultiSelect
+    onMultiSelect: groupBoard.handleMultiSelect,
+    assignGroups: groupBoard.groups,
+    onAddItemToGroup: groupBoard.addItemToGroup,
+    onCreateGroupForItem: groupBoard.createGroupForItem
   });
 
   const settingsPanelProps = useSettingsPanelProps({
@@ -1095,7 +1095,7 @@ const App = () => {
         searchInputRef={searchInputRef}
         showTagFilter={showTagFilter}
         setShowTagFilter={setShowTagFilter}
-        allTags={headerTags}
+        allTags={allTags}
         searchIsFocused={searchIsFocused}
         setSearchIsFocused={setSearchIsFocused}
         setEditingTagsId={setEditingTagsId}
@@ -1117,8 +1117,8 @@ const App = () => {
           onSelectGroup={setActiveGroup}
           onCreateGroup={groupBoard.createGroup}
           onRenameGroup={groupBoard.renameGroup}
-          onProtectedGroup={groupBoard.notifyProtectedGroup}
           onDeleteGroup={groupBoard.deleteGroup}
+          onReorderGroup={groupBoard.reorderGroup}
           onToggleSelectionMode={groupBoard.toggleSelectionMode}
         />
       )}
@@ -1154,7 +1154,7 @@ const App = () => {
           saveSetting={saveSetting}
           filteredHistory={filteredHistory}
           search={search}
-          activeGroup={activeGroup}
+          activeGroup={activeGroupName}
           pinnedItems={pinnedItems}
           unpinnedItems={unpinnedItems}
           compactMode={compactMode}

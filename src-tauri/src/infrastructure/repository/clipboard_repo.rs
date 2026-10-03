@@ -4,6 +4,7 @@ use crate::database::{
 };
 use crate::domain::models::ClipboardEntry;
 use crate::infrastructure::encryption;
+use crate::infrastructure::repository::group_repo::GroupStore;
 use crate::infrastructure::repository::settings_repo::SqliteSettingsRepository;
 use rusqlite::params;
 use rusqlite::Connection;
@@ -15,6 +16,20 @@ use urlencoding::decode;
 
 const RICH_IMAGE_FALLBACK_PREFIX: &str = "<!--TIEZ_RICH_IMAGE:";
 const RICH_IMAGE_FALLBACK_SUFFIX: &str = "-->";
+
+fn append_id_not_in(sql: &mut String, count: usize) {
+    if count == 0 {
+        return;
+    }
+    sql.push_str(" AND id NOT IN (");
+    for index in 0..count {
+        if index > 0 {
+            sql.push(',');
+        }
+        sql.push('?');
+    }
+    sql.push(')');
+}
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -67,11 +82,29 @@ pub trait ClipboardRepository {
 
 pub struct SqliteClipboardRepository {
     conn: Arc<Mutex<Connection>>,
+    groups: Option<Arc<GroupStore>>,
 }
 
 impl SqliteClipboardRepository {
     pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self { conn, groups: None }
+    }
+
+    pub fn attach_groups(&mut self, groups: Arc<GroupStore>) {
+        self.groups = Some(groups);
+    }
+
+    fn group_protected_ids(&self) -> Vec<i64> {
+        self.groups
+            .as_ref()
+            .map(|groups| groups.protected_ids())
+            .unwrap_or_default()
+    }
+
+    fn forget_group_entry(&self, id: i64) {
+        if let Some(groups) = &self.groups {
+            groups.forget_entry(id);
+        }
     }
 
     pub fn encrypt_entry_with_conn(&self, conn: &Connection, id: i64) -> Result<(), String> {
@@ -507,6 +540,7 @@ impl SqliteClipboardRepository {
         conn.execute("DELETE FROM clipboard_history WHERE id = ?", [id])
             .map_err(|e| e.to_string())?;
         let _ = conn.execute("DELETE FROM entry_tags WHERE entry_id = ?", params![id]);
+        self.forget_group_entry(id);
         Ok(())
     }
 
@@ -514,6 +548,7 @@ impl SqliteClipboardRepository {
         conn.execute("DELETE FROM clipboard_history WHERE id = ?", params![id])
             .map_err(|e| e.to_string())?;
         let _ = conn.execute("DELETE FROM entry_tags WHERE entry_id = ?", params![id]);
+        self.forget_group_entry(id);
         Ok(())
     }
 
@@ -590,28 +625,33 @@ impl SqliteClipboardRepository {
         if let Ok(Some(limit_str)) = SqliteSettingsRepository::get_raw(conn, "app.persistent_limit")
         {
             if let Ok(limit) = limit_str.parse::<i32>() {
-                // Count non-pinned entries
-                let count: i32 = conn.query_row(
+                // Pinned, tagged, and custom-group items are kept.
+                let protected = self.group_protected_ids();
+                let mut count_sql = String::from(
                     "SELECT COUNT(*) FROM clipboard_history WHERE is_pinned = 0 AND (tags = '[]' OR tags IS NULL)",
-                    [],
-                    |row| row.get(0)
-                ).map_err(|e| e.to_string())?;
+                );
+                append_id_not_in(&mut count_sql, protected.len());
+                let count: i32 = conn
+                    .query_row(&count_sql, rusqlite::params_from_iter(protected.iter()), |row| {
+                        row.get(0)
+                    })
+                    .map_err(|e| e.to_string())?;
 
                 if count > limit {
                     // First, get the IDs that will be deleted
                     let to_delete = count - limit;
                     let deleted_ids: Vec<i64> = {
-                        let mut stmt = conn
-                            .prepare(
-                                "SELECT id FROM clipboard_history 
-                             WHERE is_pinned = 0 AND (tags = '[]' OR tags IS NULL)
-                             ORDER BY timestamp ASC 
-                             LIMIT ?",
-                            )
-                            .map_err(|e| e.to_string())?;
+                        let mut select_sql = String::from(
+                            "SELECT id FROM clipboard_history WHERE is_pinned = 0 AND (tags = '[]' OR tags IS NULL)",
+                        );
+                        append_id_not_in(&mut select_sql, protected.len());
+                        select_sql.push_str(" ORDER BY timestamp ASC LIMIT ?");
+                        let mut args: Vec<i64> = protected.clone();
+                        args.push(i64::from(to_delete));
+                        let mut stmt = conn.prepare(&select_sql).map_err(|e| e.to_string())?;
 
                         let rows = stmt
-                            .query_map([to_delete], |row| row.get(0))
+                            .query_map(rusqlite::params_from_iter(args.iter()), |row| row.get(0))
                             .map_err(|e| e.to_string())?;
                         rows.filter_map(|r| r.ok()).collect()
                     };
@@ -1202,16 +1242,19 @@ impl ClipboardRepository for SqliteClipboardRepository {
     fn clear(&self, data_dir: Option<&std::path::Path>) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
 
-        // Get IDs of unpinned items without tags.
-        let mut stmt = conn
-            .prepare(
-                "SELECT id FROM clipboard_history 
+        // Get IDs of unpinned items without tags or custom-group membership.
+        let protected = self.group_protected_ids();
+        let mut clear_sql = String::from(
+            "SELECT id FROM clipboard_history 
              WHERE is_pinned = 0 
                AND NOT EXISTS (SELECT 1 FROM entry_tags WHERE entry_id = clipboard_history.id)",
-            )
-            .map_err(|e| e.to_string())?;
+        );
+        append_id_not_in(&mut clear_sql, protected.len());
+        let mut stmt = conn.prepare(&clear_sql).map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([], |row| row.get::<_, i64>(0))
+            .query_map(rusqlite::params_from_iter(protected.iter()), |row| {
+                row.get::<_, i64>(0)
+            })
             .map_err(|e| e.to_string())?;
         let ids: Vec<i64> = rows.filter_map(Result::ok).collect();
 
