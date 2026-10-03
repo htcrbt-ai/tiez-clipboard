@@ -7,6 +7,10 @@ import ConfirmDialog from "./shared/components/ConfirmDialog";
 import { translations } from "./locales";
 import AppHeader from "./features/app/components/AppHeader";
 import AppMainContent from "./features/app/components/AppMainContent";
+import GroupTabBar from "./features/groups/components/GroupTabBar";
+import SelectionActionBar from "./features/groups/components/SelectionActionBar";
+import { useActiveGroup } from "./features/groups/hooks/useActiveGroup";
+import { useGroupBoard } from "./features/groups/hooks/useGroupBoard";
 import { useAppState } from "./features/app/hooks/useAppState";
 import { useSettingsPanelProps } from "./features/settings/hooks/useSettingsPanelProps";
 import { useDebounce } from "./shared/hooks/useDebounce";
@@ -366,6 +370,7 @@ const App = () => {
     {}
   );
   const PAGE_SIZE = 80;
+  const { activeGroup, setActiveGroup } = useActiveGroup();
   const { fetchHistory, loadMoreHistory } = useHistoryFetch({
     debouncedSearch,
     typeFilter,
@@ -379,7 +384,8 @@ const App = () => {
     setHasMore,
     isLoadingMore,
     hasMore,
-    setIsLoadingMore
+    setIsLoadingMore,
+    groupId: activeGroup
   });
 
   const t = useCallback((key: string) => {
@@ -931,11 +937,33 @@ const App = () => {
   };
   */
 
+  const showMainList =
+    !showSettings && !effectiveShowTagManager && !effectiveShowEmojiPanel && !chatMode;
+
+  const groupBoard = useGroupBoard({
+    t,
+    activeGroup,
+    setActiveGroup,
+    history,
+    setHistory,
+    fetchHistory,
+    openConfirm,
+    closeConfirm,
+    pushToast,
+    showGroupHotkeys: showMainList,
+    editingTagsId
+  });
+
   const filteredHistory = useFilteredHistory({
     history,
     search,
-    typeFilter
+    typeFilter,
+    onlyIds: groupBoard.previewMemberIds
   });
+  groupBoard.filteredRef.current = filteredHistory;
+
+  const activeGroupName =
+    groupBoard.groups.find((group) => group.id === activeGroup)?.name ?? null;
 
   const effectiveHasMore = hasMore && filteredHistory.length >= PAGE_SIZE;
 
@@ -971,7 +999,9 @@ const App = () => {
     richPasteHotkey,
     searchInputRef,
     copyToClipboard,
-    setSearch
+    setSearch,
+    consumeEscape: groupBoard.consumeEscape,
+    blockPaste: groupBoard.blockPaste
   });
 
 
@@ -1008,7 +1038,13 @@ const App = () => {
     setEditingTagsId,
     setTagInput,
     handleUpdateTags,
-    handleAIAction
+    handleAIAction,
+    selectionMode: groupBoard.selectionMode,
+    selectedIds: groupBoard.selectedIds,
+    onMultiSelect: groupBoard.handleMultiSelect,
+    assignGroups: groupBoard.groups,
+    onAddItemToGroup: groupBoard.addItemToGroup,
+    onCreateGroupForItem: groupBoard.createGroupForItem
   });
 
   const settingsPanelProps = useSettingsPanelProps({
@@ -1072,6 +1108,21 @@ const App = () => {
         onToggleChat={handleToggleHeaderChat}
       />
 
+      {showMainList && (
+        <GroupTabBar
+          t={t}
+          groups={groupBoard.groups}
+          activeGroup={activeGroup}
+          selectionMode={groupBoard.selectionMode}
+          onSelectGroup={setActiveGroup}
+          onCreateGroup={groupBoard.createGroup}
+          onRenameGroup={groupBoard.renameGroup}
+          onDeleteGroup={groupBoard.deleteGroup}
+          onReorderGroup={groupBoard.reorderGroup}
+          onToggleSelectionMode={groupBoard.toggleSelectionMode}
+        />
+      )}
+
       <AnnouncementSystem
         announcements={announcements}
         onDismiss={dismissAnnouncement}
@@ -1103,6 +1154,7 @@ const App = () => {
           saveSetting={saveSetting}
           filteredHistory={filteredHistory}
           search={search}
+          activeGroup={activeGroupName}
           pinnedItems={pinnedItems}
           unpinnedItems={unpinnedItems}
           compactMode={compactMode}
@@ -1119,6 +1171,23 @@ const App = () => {
           onScrollTop={handleScrollTop}
         />
       </main>
+
+      {showMainList && groupBoard.selectedCount > 0 && (
+        <SelectionActionBar
+          t={t}
+          count={groupBoard.selectedCount}
+          groups={groupBoard.groups}
+          activeGroup={activeGroup}
+          onAddToGroup={groupBoard.addToGroup}
+          onMoveToGroup={groupBoard.moveToGroup}
+          onCreateAndAdd={groupBoard.createAndAdd}
+          onRemoveFromGroup={groupBoard.removeFromGroup}
+          onPin={groupBoard.pinSelected}
+          onUnpin={groupBoard.unpinSelected}
+          onDelete={groupBoard.deleteSelected}
+          onClear={groupBoard.clearSelection}
+        />
+      )}
 
       <ToastContainer toasts={toasts} />
 

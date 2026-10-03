@@ -203,8 +203,11 @@ pub fn clear_clipboard_history(
     app_data: State<'_, AppDataDir>,
 ) -> AppResult<()> {
     {
+        let grouped = state.groups.member_ids();
         let mut session_items = session.inner().0.lock().unwrap();
-        session_items.retain(|item| item.is_pinned || !item.tags.is_empty());
+        session_items.retain(|item| {
+            item.is_pinned || !item.tags.is_empty() || grouped.contains(&item.id)
+        });
     }
     let data_dir = app_data.0.lock().unwrap();
     state.repo.clear(Some(&data_dir)).map_err(AppError::from)?;
@@ -291,6 +294,17 @@ pub fn delete_tag_from_all(
     app_data: State<'_, AppDataDir>,
     tag_name: String,
 ) -> AppResult<()> {
+    let tagged_ids: Vec<i64> = {
+        let conn = state.conn.lock().map_err(|e| AppError::from(e.to_string()))?;
+        let mut stmt = conn
+            .prepare("SELECT entry_id FROM entry_tags WHERE tag = ?")
+            .map_err(|e| AppError::from(e.to_string()))?;
+        let rows = stmt
+            .query_map(rusqlite::params![tag_name], |row| row.get(0))
+            .map_err(|e| AppError::from(e.to_string()))?;
+        rows.filter_map(Result::ok).collect()
+    };
+
     {
         let mut session_items = session.inner().0.lock().unwrap();
         session_items.retain(|item| !item.tags.contains(&tag_name));
@@ -300,7 +314,8 @@ pub fn delete_tag_from_all(
     state
         .tag_repo
         .delete_globally(&tag_name, Some(&data_dir))
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    state.groups.forget_entries(&tagged_ids).map_err(AppError::from)
 }
 
 #[tauri::command]

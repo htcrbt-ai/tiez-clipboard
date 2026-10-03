@@ -6,6 +6,7 @@ pub use crate::infrastructure::encryption::{self, ENCRYPT_PREFIX};
 
 pub use crate::domain::models::ClipboardEntry;
 use crate::infrastructure::repository::clipboard_repo::SqliteClipboardRepository;
+use crate::infrastructure::repository::group_repo::GroupStore;
 use crate::infrastructure::repository::settings_repo::SqliteSettingsRepository;
 use crate::infrastructure::repository::tag_repo::SqliteTagRepository;
 use std::sync::{Arc, Mutex};
@@ -15,6 +16,7 @@ pub struct DbState {
     pub repo: SqliteClipboardRepository,
     pub settings_repo: SqliteSettingsRepository,
     pub tag_repo: SqliteTagRepository,
+    pub groups: Arc<GroupStore>,
 }
 
 const SENSITIVE_KEYS: &[&str] = &[

@@ -1,0 +1,285 @@
+.group-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 6px;
+  background: var(--bg-toolbar);
+  border-bottom: var(--toolbar-border);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.group-tab-scroll {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+  scrollbar-width: none;
+}
+
+.group-tab-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.group-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 128px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.group-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-tab-count {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.group-tab:hover,
+.group-select-toggle:hover {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.group-tab.active,
+.group-select-toggle.active {
+  background: var(--accent-color);
+  color: #fff;
+  border-color: transparent;
+}
+
+.group-tab-add,
+.group-select-toggle {
+  padding-inline: 8px;
+}
+
+.group-inline-input {
+  width: 96px;
+  flex: 0 0 auto;
+  border: 1px solid var(--accent-color);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 12px;
+  outline: none;
+}
+
+.group-context-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--bg-secondary, var(--bg-toolbar));
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+}
+
+.group-context-menu button,
+.group-picker button,
+.selection-action-buttons button {
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.group-context-menu button {
+  display: block;
+  width: 100%;
+}
+
+.group-context-menu button:hover,
+.group-picker-item:hover,
+.selection-action-buttons button:hover {
+  background: var(--bg-input);
+}
+
+.selection-action-bar {
+  position: relative;
+  flex-shrink: 0;
+  padding: 6px 8px 8px;
+  background: var(--bg-toolbar);
+  border-top: var(--toolbar-border);
+}
+
+.selection-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selection-count {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.selection-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.selection-action-buttons button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.selection-action-buttons button.danger {
+  color: #d64545;
+}
+
+.group-picker {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 4px);
+  z-index: 40;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--bg-secondary, var(--bg-toolbar));
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+}
+
+.group-picker-modes {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.group-picker-modes button.active {
+  background: var(--accent-color);
+  color: #fff;
+}
+
+.group-picker-hint {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.group-picker-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 120px;
+  overflow: auto;
+}
+
+.group-picker-create {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.group-picker-create .group-inline-input {
+  flex: 1;
+  width: auto;
+}
+
+.group-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--text-secondary);
+  background: transparent;
+  color: #fff;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.group-check.checked {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.item-group-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.item-group-button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.item-group-button:hover,
+.item-group-menu:focus-within .item-group-button {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.item-group-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 160px;
+  max-width: 220px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--bg-secondary, var(--bg-toolbar));
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+}
+
+.item-group-popover button,
+.item-group-popover input {
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+}
+
+.item-group-popover form {
+  margin-top: 4px;
+}
+
+.history-item.multi-selected {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+.updates-disabled-note {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}

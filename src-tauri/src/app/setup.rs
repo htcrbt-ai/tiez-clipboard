@@ -76,7 +76,11 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let settings = load_settings(&settings_repo);
 
     // 5. App State Management
-    setup_state(app, conn_arc.clone(), &settings, app_dir.clone());
+    let groups = std::sync::Arc::new(
+        crate::infrastructure::repository::group_repo::GroupStore::open(&app_dir.join("groups.db"))
+            .map_err(|err| std::io::Error::other(err))?,
+    );
+    setup_state(app, conn_arc.clone(), &settings, app_dir.clone(), groups);
     app.manage(EncryptionQueueState(init_encryption_queue(
         app_handle.clone(),
     )));
@@ -341,8 +345,10 @@ fn setup_state(
     conn_arc: std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>,
     s: &StartupSettings,
     app_dir: std::path::PathBuf,
+    groups: std::sync::Arc<crate::infrastructure::repository::group_repo::GroupStore>,
 ) {
-    let repo = SqliteClipboardRepository::new(conn_arc.clone());
+    let mut repo = SqliteClipboardRepository::new(conn_arc.clone());
+    repo.attach_groups(groups.clone());
     let settings_repo = SqliteSettingsRepository::new(conn_arc.clone());
     let tag_repo = SqliteTagRepository::new(conn_arc.clone());
     app.manage(DbState {
@@ -350,6 +356,7 @@ fn setup_state(
         repo,
         settings_repo,
         tag_repo,
+        groups,
     });
 
     app.manage(SettingsState {

@@ -21,8 +21,9 @@ fn main() {
 
     let _ = dotenvy::dotenv();
 
+    // Updater plugin is not registered. A non-https endpoint makes plugin init
+    // exit before any window opens, and this build must not install official updates.
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
@@ -69,6 +70,15 @@ fn main() {
             app::commands::rename_tag_globally,
             app::commands::delete_tag_from_all,
             app::commands::create_new_tag,
+            app::commands::list_custom_groups,
+            app::commands::create_custom_group,
+            app::commands::rename_custom_group,
+            app::commands::reorder_custom_groups,
+            app::commands::delete_custom_group,
+            app::commands::add_items_to_group,
+            app::commands::move_items_to_group,
+            app::commands::remove_items_from_group,
+            app::commands::get_custom_group_items,
             app::commands::update_pinned_order,
             app::commands::get_db_count,
             app::commands::get_clipboard_content,

@@ -1,6 +1,7 @@
 pub mod ai_cmd;
 pub mod clipboard_cmd;
 pub mod file_cmd;
+pub mod group_cmd;
 pub mod history_cmd;
 pub mod hotkey_cmd;
 pub mod settings_cmd;
@@ -13,6 +14,7 @@ pub mod ui_cmd;
 pub use ai_cmd::*;
 pub use clipboard_cmd::*;
 pub use file_cmd::*;
+pub use group_cmd::*;
 pub use history_cmd::*;
 pub use hotkey_cmd::*;
 pub use settings_cmd::*;

@@ -1304,7 +1304,7 @@ fn handle_post_paste_actions(
     let mut actual_delete = delete_after_use;
     if actual_delete && id > 0 {
         if let Ok(Some(entry)) = state.repo.get_entry_by_id(id) {
-            if entry.is_pinned || !entry.tags.is_empty() {
+            if entry.is_pinned || !entry.tags.is_empty() || state.groups.contains_entry(id) {
                 actual_delete = false;
             }
         }

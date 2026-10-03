@@ -22,6 +22,8 @@ interface UseKeyboardNavigationOptions {
   searchInputRef: RefObject<HTMLInputElement | null>;
   copyToClipboard: (id: number, content: string, contentType: string, pasteWithFormat?: boolean) => Promise<void>;
   setSearch: (val: string) => void;
+  consumeEscape?: () => boolean;
+  blockPaste?: boolean;
 }
 
 export const useKeyboardNavigation = ({
@@ -38,7 +40,9 @@ export const useKeyboardNavigation = ({
   richPasteHotkey,
   searchInputRef,
   copyToClipboard,
-  setSearch
+  setSearch,
+  consumeEscape,
+  blockPaste = false
 }: UseKeyboardNavigationOptions) => {
   const filteredHistoryRef = useRef(filteredHistory);
   const selectedIndexRef = useRef(selectedIndex);
@@ -51,6 +55,8 @@ export const useKeyboardNavigation = ({
   const arrowKeySelectionRef = useRef(arrowKeySelection);
   const copyToClipboardRef = useRef(copyToClipboard);
   const richPasteHotkeyRef = useRef(richPasteHotkey);
+  const consumeEscapeRef = useRef(consumeEscape);
+  const blockPasteRef = useRef(blockPaste);
 
   useEffect(() => { filteredHistoryRef.current = filteredHistory; }, [filteredHistory]);
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
@@ -62,6 +68,8 @@ export const useKeyboardNavigation = ({
   useEffect(() => { arrowKeySelectionRef.current = arrowKeySelection; }, [arrowKeySelection]);
   useEffect(() => { copyToClipboardRef.current = copyToClipboard; }, [copyToClipboard]);
   useEffect(() => { richPasteHotkeyRef.current = richPasteHotkey; }, [richPasteHotkey]);
+  useEffect(() => { consumeEscapeRef.current = consumeEscape; }, [consumeEscape]);
+  useEffect(() => { blockPasteRef.current = blockPaste; }, [blockPaste]);
   useEffect(() => {
     invoke("set_navigation_mode", { active: isKeyboardMode }).catch(console.error);
   }, [isKeyboardMode]);
@@ -93,6 +101,14 @@ export const useKeyboardNavigation = ({
       const isEditable = isAnyInput || target.isContentEditable === true;
 
       if (e.key === "Escape") {
+          if (target.closest?.(".group-inline-input, .group-picker, .group-context-menu")) {
+            return;
+          }
+          if (consumeEscapeRef.current?.()) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
           e.preventDefault();
           if (isEditable) {
               searchInputRef.current?.blur();
@@ -139,7 +155,7 @@ export const useKeyboardNavigation = ({
 
       const matchesRichHotkey = matchesHotkey(e, richPasteHotkeyRef.current);
       const shouldHandleEnter = e.key === "Enter" && isKeyboardModeRef.current;
-      if (shouldHandleEnter || matchesRichHotkey) {
+      if ((shouldHandleEnter || matchesRichHotkey) && !blockPasteRef.current) {
         const isRich = matchesRichHotkey;
         e.preventDefault();
         e.stopPropagation();
@@ -219,12 +235,14 @@ export const useKeyboardNavigation = ({
           setSelectedIndex((prev) => Math.min(prev + 1, history.length - 1));
         }
       } else if (action === "enter") {
+        if (blockPasteRef.current) return;
         if (!isNavMode) return;
         if (currentIndex >= 0 && currentIndex < history.length) {
           const item = history[currentIndex];
           copyToClipboard(item.id, item.content, item.content_type, false);
         }
       } else if (action === "escape") {
+        if (consumeEscapeRef.current?.()) return;
         setSearch("");
         setIsKeyboardMode(false);
       }

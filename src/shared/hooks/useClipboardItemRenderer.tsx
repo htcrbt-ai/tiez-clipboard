@@ -7,6 +7,7 @@ import ClipboardItem from "../../features/clipboard/components/ClipboardItem";
 import type { QuickPasteHint } from "../../features/clipboard/types";
 import type { ClipboardEntry } from "../types";
 import type { Locale } from "../types";
+import type { SelectModifierEvent } from "../../features/groups/hooks/useGroupBoard";
 
 interface UseClipboardItemRendererOptions {
   privacyProtection: boolean;
@@ -49,6 +50,12 @@ interface UseClipboardItemRendererOptions {
   setTagInput: Dispatch<SetStateAction<string>>;
   handleUpdateTags: (id: number, tags: string[]) => void;
   handleAIAction: (id: number, content: string, actionType: string) => void;
+  selectionMode: boolean;
+  selectedIds: Set<number>;
+  onMultiSelect: (event: SelectModifierEvent, item: ClipboardEntry) => void;
+  assignGroups: { id: number; name: string }[];
+  onAddItemToGroup: (item: ClipboardEntry, groupId: number) => void;
+  onCreateGroupForItem: (item: ClipboardEntry, name: string) => void;
 }
 
 type RenderItemContent = (
@@ -91,7 +98,13 @@ export const useClipboardItemRenderer = ({
   setEditingTagsId,
   setTagInput,
   handleUpdateTags,
-  handleAIAction
+  handleAIAction,
+  selectionMode,
+  selectedIds,
+  onMultiSelect,
+  assignGroups,
+  onAddItemToGroup,
+  onCreateGroupForItem
 }: UseClipboardItemRendererOptions): { renderItemContent: RenderItemContent } => {
   const renderItemContent = useCallback(
     (item: ClipboardEntry, index: number, dragControls?: DragControls, disableLayout?: boolean) => {
@@ -127,6 +140,13 @@ export const useClipboardItemRenderer = ({
           sensitiveMaskEmailDomain={sensitiveMaskEmailDomain}
           quickPasteHint={quickPasteHintsById[item.id]}
           onSelect={() => setSelectedIndex(index)}
+          selectionMode={selectionMode}
+          multiSelected={selectedIds.has(item.id)}
+          onMultiSelect={(event) => onMultiSelect(event, item)}
+          assignGroups={assignGroups}
+          assignGroupsKey={assignGroups.map((group) => `${group.id}:${group.name}`).join("|")}
+          onAddItemToGroup={(groupId) => onAddItemToGroup(item, groupId)}
+          onCreateGroupForItem={(name) => onCreateGroupForItem(item, name)}
           onCopy={(withFormat) =>
             copyToClipboard(item.id, item.content, item.content_type, withFormat, item.is_pinned, item.tags || [])
           }
@@ -229,7 +249,13 @@ export const useClipboardItemRenderer = ({
       setEditingTagsId,
       setTagInput,
       handleUpdateTags,
-      handleAIAction
+      handleAIAction,
+      selectionMode,
+      selectedIds,
+      onMultiSelect,
+      assignGroups,
+      onAddItemToGroup,
+      onCreateGroupForItem
     ]
   );
 

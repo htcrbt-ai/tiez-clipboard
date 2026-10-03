@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Dispatch, SetStateAction } from "react";
 import type { ClipboardEntry } from "../types";
+import { isBrowserPreview } from "../lib/tauriRuntime";
 
 interface UseHistoryFetchOptions {
   debouncedSearch: string;
@@ -17,6 +18,7 @@ interface UseHistoryFetchOptions {
   isLoadingMore: boolean;
   hasMore: boolean;
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>;
+  groupId: number | null;
 }
 
 export const useHistoryFetch = ({
@@ -32,7 +34,8 @@ export const useHistoryFetch = ({
   setHasMore,
   isLoadingMore,
   hasMore,
-  setIsLoadingMore
+  setIsLoadingMore,
+  groupId
 }: UseHistoryFetchOptions) => {
   const loadingRef = useRef(false);
   const fetchSeqRef = useRef(0);
@@ -61,9 +64,21 @@ export const useHistoryFetch = ({
 
         let data: ClipboardEntry[] = [];
 
+        if (isBrowserPreview()) {
+          if (seq !== fetchSeqRef.current) return;
+          setHasMore(false);
+          return;
+        }
+
         const hasSearch = debouncedSearch && debouncedSearch.trim().length > 0;
 
-        if (hasSearch) {
+        if (groupId != null) {
+          const grouped = await invoke<ClipboardEntry[]>("get_custom_group_items", { groupId });
+          if (seq !== fetchSeqRef.current) return;
+          setHistory(grouped || []);
+          setCurrentOffset((grouped || []).length);
+          setHasMore(false);
+        } else if (hasSearch) {
           let term = debouncedSearch;
           let tagOnly = false;
           if (term.startsWith("tag:")) {
@@ -132,6 +147,7 @@ export const useHistoryFetch = ({
     },
     [
       debouncedSearch,
+      groupId,
       typeFilter,
       pageSize,
       persistentLimit,
@@ -144,6 +160,7 @@ export const useHistoryFetch = ({
 
   const loadMoreHistory = useCallback(async () => {
     if (loadingRef.current || isLoadingMore || !hasMore) return;
+    if (groupId != null) return;
     if (debouncedSearch && debouncedSearch.trim().length > 0) return;
 
     const effectiveOffset = Math.min(currentOffsetRef.current, historyLengthRef.current);
@@ -158,7 +175,7 @@ export const useHistoryFetch = ({
       loadingRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [debouncedSearch, fetchHistory, hasMore, isLoadingMore, setIsLoadingMore]);
+  }, [debouncedSearch, fetchHistory, groupId, hasMore, isLoadingMore, setIsLoadingMore]);
 
   return { fetchHistory, loadMoreHistory };
 };

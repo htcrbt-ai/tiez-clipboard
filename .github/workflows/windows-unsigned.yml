@@ -1,0 +1,80 @@
+name: Windows unsigned installer
+
+# Self-use build. No signing key and no GitHub release.
+# The installer is uploaded as a workflow artifact.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/group-tabs-multiselect-ab7f
+      - master
+
+jobs:
+  build-windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # MSI/WiX rejects a non-numeric prerelease such as 0.3.5-groups.
+      # NSIS accepts that version, so the custom build ships as an .exe installer.
+      - name: Build unsigned NSIS installer
+        run: npx tauri build --bundles nsis
+
+      - name: Smoke test startup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = Join-Path (Resolve-Path "src-tauri\target\release") "tiez-app.exe"
+          if (-not (Test-Path $exe)) { throw "Built exe not found: $exe" }
+          $psi = New-Object System.Diagnostics.ProcessStartInfo
+          $psi.FileName = $exe
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.CreateNoWindow = $true
+          $proc = New-Object System.Diagnostics.Process
+          $proc.StartInfo = $psi
+          [void]$proc.Start()
+          $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+          $stderrTask = $proc.StandardError.ReadToEndAsync()
+          $stayedUp = -not $proc.WaitForExit(15000)
+          if ($stayedUp) {
+            taskkill /F /T /PID $proc.Id | Out-Host
+            [void]$proc.WaitForExit(10000)
+          }
+          [void]$stdoutTask.Wait(10000)
+          [void]$stderrTask.Wait(10000)
+          $text = ""
+          if ($stdoutTask.IsCompleted) { $text += $stdoutTask.Result }
+          if ($stderrTask.IsCompleted) { $text += $stderrTask.Result }
+          Write-Host "----- startup log -----"
+          Write-Host $text
+          if (-not $stayedUp) {
+            throw "Startup smoke test failed: tiez-app.exe exited within 15s (code $($proc.ExitCode))"
+          }
+          if ($text -match "Failed to build tauri app") {
+            throw "Startup smoke test failed: log contains 'Failed to build tauri app'"
+          }
+          Write-Host "Startup smoke test passed: process was still running after 15s."
+          Get-Process -Name "tiez-app" -ErrorAction SilentlyContinue | Stop-Process -Force
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiez-groups-windows-x64
+          if-no-files-found: error
+          path: src-tauri/target/release/bundle/nsis/*.exe
