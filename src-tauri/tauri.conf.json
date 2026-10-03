@@ -152,7 +152,6 @@
     ],
     "targets": [
       "nsis",
-      "msi",
       "dmg",
       "app"
     ],
